@@ -127,6 +127,8 @@ ee(Object.defineProperties(DbjsCluster.prototype, assign({
 				this.emit('collectionview',
 					{ value: getCollectionSnapshot(collection, resolve, keyTokens), id: collectionName });
 			}.bind(this));
+			this.emit('collectionview',
+				{ value: getCollectionSnapshot(collection, resolve, keyTokens), id: collectionName });
 			return { getResult: function () {
 				return getCollectionSnapshot(collection, resolve, keyTokens);
 			}, collection: collection };
@@ -153,6 +155,7 @@ ee(Object.defineProperties(DbjsCluster.prototype, assign({
 					value = collection.size;
 					this.persistentDb.storeCustom('_size:' + collectionName, stamp + '.' + value).done();
 				}
+				this.emit('collectionsize', { value: value, id: collectionName, stamp: stamp });
 				return { getResult: function () { return { value: value, stamp: stamp }; },
 					collection: collection };
 			}.bind(this));
