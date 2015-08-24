@@ -1,16 +1,20 @@
 'use strict';
 
-var assign          = require('es5-ext/object/assign')
-  , ensureString    = require('es5-ext/object/validate-stringifiable-value')
-  , endsWith        = require('es5-ext/string/#/ends-with')
-  , d               = require('d')
-  , ee              = require('event-emitter')
-  , deferred        = require('deferred')
-  , memoizeMethods  = require('memoizee/methods-plain')
-  , getStamp        = require('time-uuid/time')
-  , tokenizeKeyPath = require('dbjs/_setup/utils/resolve-property-path').tokenize
+var toNatural           = require('es5-ext/number/to-pos-integer')
+  , assign              = require('es5-ext/object/assign')
+  , ensureString        = require('es5-ext/object/validate-stringifiable-value')
+  , endsWith            = require('es5-ext/string/#/ends-with')
+  , d                   = require('d')
+  , lazy                = require('d/lazy')
+  , ee                  = require('event-emitter')
+  , deferred            = require('deferred')
+  , memoizeMethods      = require('memoizee/methods')
+  , getStamp            = require('time-uuid/time')
+  , ensureObservableSet = require('observable-set/valid-observable-set')
+  , tokenizeKeyPath     = require('dbjs/_setup/utils/resolve-property-path').tokenize
 
-  , push = Array.prototype.push;
+  , push = Array.prototype.push, create = Object.create, defineProperty = Object.defineProperty
+  , stringify = JSON.stringify;
 
 var getBriefDataEvents = function (obj, map, events) {
 	var event = obj._lastOwnEvent_, idLength = obj.master.__id__.length + 1;
@@ -53,9 +57,10 @@ var resolveValueLastModified = function (obj, keyTokens) {
 	return obj._getPropertyLastModified_(sKey);
 };
 
-var getCollectionSnapshot = function (collection, resolve, keyTokens) {
-	var result = [];
-	collection.forEach(function (obj) {
+var getSliceSnapshot = function (slice, array) {
+	var result = [], resolve = array.dbjsCompare$settings.resolve
+	  , keyTokens = array.dbjsCompare$settings.keyTokens;
+	slice.forEach(function (obj) {
 		result.push({ id: obj.__id__, sortIndex: resolve(obj, keyTokens) });
 	});
 	return result;
@@ -85,80 +90,96 @@ ee(Object.defineProperties(DbjsCluster.prototype, assign({
 			}.bind(this));
 		}.bind(this))(events);
 	}),
-	getCollectionView: d(function (collectionName, initSet, keyPath, filter, sortKeyPath) {
-		return this._setupCollectionView(collectionName, initSet, keyPath, filter, sortKeyPath)(
-			function (data) {  return data.getResult(); }
-		);
+	searchArray: d(function (arrayName, filter, start, end) {
+		var array = this._observableArrays[arrayName], result, index, resolve, keyTokens;
+		if (!array) throw new Error("Array for " + stringify(arrayName) + " was not initialized yet");
+		start = toNatural(start);
+		end = toNatural(end) || Infinity;
+		resolve = array.dbjsCompare$settings.resolve;
+		keyTokens = array.dbjsCompare$settings.keyTokens;
+		result = [];
+		if (end <= start) return result;
+		index = -1;
+		array.some(function (obj) {
+			if (!filter(obj)) return;
+			++index;
+			if (index < start) return;
+			if (index === end) return true;
+			result.push({ id: obj.__id__, sortIndex: resolve(obj, keyTokens) });
+		}, this);
+		return deferred(result);
 	}),
-	searchCollectionView: d(function (collectionName, filter) {
-		return this._setupCollectionView(collectionName)(function (data) {
-			var result = [];
-			data.getResult().forEach(function (item) {
-				if (filter(this.db.objects.getById(item.id))) result.push(item);
-			}, this);
-			return result;
-		}.bind(this));
+	initializeSet: d(function (name, set) {
+		if (this._observableSets[name]) {
+			throw new Error("Set for " + stringify(name) + " is already initialized");
+		}
+		return (this._observableSets[name] = ensureObservableSet(set));
 	}),
-	getCollectionSize: d(function (collectionName, initSet, keyPath, filter) {
-		return this._setupCollectionSize(collectionName, initSet, keyPath, filter)(function (data) {
-			return data.getResult();
-		});
+	initializeArray: d(function (setName, arrayName, sortKeyPath) {
+		var compare, keyTokens, resolve, array;
+		if (!this._observableSets[setName]) {
+			throw new Error("Array for " + stringify(setName) + " was not initialized yet");
+		}
+		if ((arrayName == null) && (compare == null)) arrayName = setName;
+		arrayName = ensureString(arrayName);
+		if (this._observableArrays[arrayName]) {
+			throw new Error("Set for " + stringify(arrayName) + " is already initialized");
+		}
+		sortKeyPath = ensureString(sortKeyPath);
+		if (endsWith.call(sortKeyPath, ':lastModified')) {
+			sortKeyPath = sortKeyPath.slice(0, -':lastModified'.length);
+			resolve = resolveValueLastModified;
+		} else {
+			resolve = resolveValue;
+		}
+		keyTokens = tokenizeKeyPath(sortKeyPath);
+		compare = function (a, b) { return resolve(a, keyTokens) - resolve(b, keyTokens); };
+		array = this._observableArrays[arrayName] = this._observableSets[setName].toArray(compare);
+		return defineProperty(array, 'dbjsCompare$settings', d('', {
+			resolve: resolve,
+			keyTokens: keyTokens
+		}));
 	})
-}, memoizeMethods({
-	_loadAll: d(function () { return this.persistentDb.loadAll(); }),
-	_setupCollection: d(function (collectionName, initSet, keyPath, filter) {
-		return this._loadAll()(function () {
-			return initSet.filterByKeyPath(keyPath, filter);
-		});
-	}, { length: 1 }),
-	_setupCollectionView: d(function (collectionName, initSet, keyPath, filter, sortKeyPath) {
-		return this._setupCollection(collectionName, initSet, keyPath, filter)(function (collection) {
-			var compare, keyTokens, resolve;
-			if (endsWith.call(sortKeyPath, ':lastModified')) {
-				sortKeyPath = sortKeyPath.slice(0, -':lastModified'.length);
-				resolve = resolveValueLastModified;
-			} else {
-				resolve = resolveValue;
-			}
-			keyTokens = tokenizeKeyPath(sortKeyPath);
-			compare = function (a, b) { return resolve(a, keyTokens) - resolve(b, keyTokens); };
-			collection = collection.toArray(compare);
-			collection.on('change', function () {
-				this.emit('collectionview',
-					{ value: getCollectionSnapshot(collection, resolve, keyTokens), id: collectionName });
-			}.bind(this));
-			this.emit('collectionview',
-				{ value: getCollectionSnapshot(collection, resolve, keyTokens), id: collectionName });
-			return { getResult: function () {
-				return getCollectionSnapshot(collection, resolve, keyTokens);
-			}, collection: collection };
-		});
-	}, { length: 1 }),
-	_setupCollectionSize: d(function (collectionName, initSet, keyPath, filter) {
-		return this._setupCollection(collectionName, initSet, keyPath, filter)(function (collection) {
-			var value, stamp;
-			collection._size.on('change', function (event) {
-				stamp = getStamp();
-				value = event.newValue;
-				this.persistentDb.storeCustom('_size:' + collectionName, stamp + '.' + value).done();
-				this.emit('collectionsize', { value: value, id: collectionName, stamp: stamp });
-			}.bind(this));
-			return this.persistentDb.getCustom('_size:' + collectionName)(function (value) {
-				var index, stamp;
-				if (value) {
-					index = value.indexOf('.');
-					stamp = Number(value.slice(0, index));
-					value = Number(value.slice(index + 1));
-				}
-				if (value !== collection.size) {
-					stamp = getStamp();
-					value = collection.size;
-					this.persistentDb.storeCustom('_size:' + collectionName, stamp + '.' + value).done();
-				}
-				this.emit('collectionsize', { value: value, id: collectionName, stamp: stamp });
-				return { getResult: function () { return { value: value, stamp: stamp }; },
-					collection: collection };
-			}.bind(this));
+}, lazy({
+	_observableSets: d(function () { return create(null); }),
+	_observableArrays: d(function () { return create(null); })
+}), memoizeMethods({
+	requestArraySlice: d(function (arrayName, start, end) {
+		var array = this._observableArrays[arrayName], slice, onChange;
+		if (!array) throw new Error("Array for " + stringify(arrayName) + " was not initialized yet");
+		slice = array.slice(start, end);
+		slice.on('change', onChange = function () {
+			this.emit('arrayslice', { id: arrayName, start: start, end: end,
+				value: getSliceSnapshot(slice, array) });
 		}.bind(this));
-	}, { length: 1 })
+		onChange();
+		return deferred(function () { return getSliceSnapshot(slice, array); });
+	}, { resolvers: [ensureString, toNatural, function (value) {
+		return toNatural(value) || Infinity;
+	}] }),
+	requestSetSize: d(function (setName) {
+		var set = this._observableSets[setName], value, stamp;
+		if (!set) throw new Error("Set for " + stringify(setName) + " was not initialized yet");
+		set._size.on('change', function (event) {
+			stamp = getStamp();
+			value = event.newValue;
+			this.persistentDb.storeCustom('_size:' + setName, stamp + '.' + value).done();
+			this.emit('setsize', { value: value, id: setName, stamp: stamp });
+		}.bind(this));
+		return this.persistentDb.getCustom('_size:' + setName)(function (value) {
+			var index, stamp;
+			if (value) {
+				index = value.indexOf('.');
+				stamp = Number(value.slice(0, index));
+				value = Number(value.slice(index + 1));
+			}
+			if (value !== set.size) {
+				stamp = getStamp();
+				value = set.size;
+				this.persistentDb.storeCustom('_size:' + setName, stamp + '.' + value).done();
+			}
+			this.emit('setsize', { value: value, id: setName, stamp: stamp });
+			return function () { return { value: value, stamp: stamp }; };
+		}.bind(this));
+	})
 }))));

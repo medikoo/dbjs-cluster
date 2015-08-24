@@ -13,14 +13,13 @@ require('levelup');
 module.exports = function (T, a, d) {
 	var db = new Database()
 	  , persistentDb = dbjsLevel(db, { path: dbPath })
-	  , cluster = new T(persistentDb)
 
 	  , obj1 = new db.Object({ firstName: 'Mark', lastName: 'Smith', age: 20 })
 	  , obj2 = new db.Object({ firstName: 'Eve', lastName: 'Nowak', age: 30 })
 	  , obj3 = new db.Object({ firstName: 'Peter', lastName: 'Smith', age: 10 })
 	  , obj4 = new db.Object({ firstName: 'John', lastName: 'Albin', age: 45 });
 
-	cluster.persistentDb.close()(function () {
+	persistentDb.close()(function () {
 		var db = new Database()
 		  , cluster = new T(dbjsLevel(db, { path: dbPath }));
 
@@ -45,23 +44,27 @@ module.exports = function (T, a, d) {
 				].sort());
 			});
 		})(function () {
-			return cluster.getCollectionView('smith', db.Object.instances,
-				'lastName', 'Smith', 'age')(function (items) {
-				a.deep(items, [
+			return cluster.persistentDb.loadAll();
+		})(function () {
+			cluster.initializeSet('smith', db.Object.instances.filterByKeyPath('lastName', 'Smith'));
+			cluster.initializeArray('smith', 'smithByAge', 'age');
+			return cluster.requestArraySlice('smithByAge')(function (getSlice) {
+				a.deep(getSlice(), [
 					{ id: obj3.__id__, sortIndex: 10 },
 					{ id: obj1.__id__, sortIndex: 20 }
 				]);
 			});
 		})(function () {
-			return cluster.getCollectionView('smith:lastmod', db.Object.instances,
-				'lastName', 'Smith', 'age:lastModified')(function (items) {
+			cluster.initializeArray('smith', 'smithByAgeLastModified', 'age:lastModified');
+			return cluster.requestArraySlice('smithByAgeLastModified')(function (getSlice) {
+				var items = getSlice();
 				a.deep(items, [
 					{ id: obj1.__id__, sortIndex: items[0].sortIndex },
 					{ id: obj3.__id__, sortIndex: items[1].sortIndex }
 				]);
 			});
 		})(function () {
-			return cluster.searchCollectionView('smith', function (obj) {
+			return cluster.searchArray('smithByAge', function (obj) {
 				return obj.firstName === 'Peter';
 			})(function (items) {
 				a.deep(items, [
@@ -69,8 +72,10 @@ module.exports = function (T, a, d) {
 				]);
 			});
 		})(function () {
-			return cluster.getCollectionSize('age>20', db.Object.instances,
-				'age', function (val) { return val > 20; }, 'age')(function (data) {
+			cluster.initializeSet('age>20', db.Object.instances.filterByKeyPath('age',
+				function (val) { return val > 20; }));
+			return cluster.requestSetSize('age>20')(function (getResult) {
+				var data = getResult();
 				a.deep(data, { value: 2, stamp: data.stamp });
 			});
 		})(function () {
