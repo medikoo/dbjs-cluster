@@ -152,20 +152,16 @@ ee(Object.defineProperties(DbjsCluster.prototype, assign({
 			this.emit('arrayslice', { id: arrayName, start: start, end: end,
 				value: getSliceSnapshot(slice, array) });
 		}.bind(this));
-		onChange();
-		return deferred(function () { return getSliceSnapshot(slice, array); });
+		return deferred({
+			get: function () { return getSliceSnapshot(slice, array); },
+			emit: onChange
+		});
 	}, { resolvers: [ensureString, toNatural, function (value) {
 		return toNatural(value) || Infinity;
 	}] }),
 	requestSetSize: d(function (setName) {
-		var set = this._observableSets[setName], value, stamp;
+		var set = this._observableSets[setName], emit;
 		if (!set) throw new Error("Set for " + stringify(setName) + " was not initialized yet");
-		set._size.on('change', function (event) {
-			stamp = getStamp();
-			value = event.newValue;
-			this.persistentDb.storeCustom('_size:' + setName, stamp + '.' + value).done();
-			this.emit('setsize', { value: value, id: setName, stamp: stamp });
-		}.bind(this));
 		return this.persistentDb.getCustom('_size:' + setName)(function (value) {
 			var index, stamp;
 			if (value) {
@@ -178,8 +174,19 @@ ee(Object.defineProperties(DbjsCluster.prototype, assign({
 				value = set.size;
 				this.persistentDb.storeCustom('_size:' + setName, stamp + '.' + value).done();
 			}
-			this.emit('setsize', { value: value, id: setName, stamp: stamp });
-			return function () { return { value: value, stamp: stamp }; };
+			emit = function () {
+				this.emit('setsize', { id: setName, stamp: stamp, value: value });
+			}.bind(this);
+			set._size.on('change', function (event) {
+				stamp = getStamp();
+				value = event.newValue;
+				this.persistentDb.storeCustom('_size:' + setName, stamp + '.' + value).done();
+				emit();
+			}.bind(this));
+			return {
+				get: function () { return { value: value, stamp: stamp }; },
+				emit: emit
+			};
 		}.bind(this));
 	})
 }))));

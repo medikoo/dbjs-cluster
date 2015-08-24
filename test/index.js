@@ -48,16 +48,16 @@ module.exports = function (T, a, d) {
 		})(function () {
 			cluster.initializeSet('smith', db.Object.instances.filterByKeyPath('lastName', 'Smith'));
 			cluster.initializeArray('smithByAge', 'smith', 'age');
-			return cluster.requestArraySlice('smithByAge')(function (getSlice) {
-				a.deep(getSlice(), [
+			return cluster.requestArraySlice('smithByAge')(function (result) {
+				a.deep(result.get(), [
 					{ id: obj3.__id__, sortIndex: 10 },
 					{ id: obj1.__id__, sortIndex: 20 }
 				]);
 			});
 		})(function () {
 			cluster.initializeArray('smithByAgeLastModified', 'smith', 'age:lastModified');
-			return cluster.requestArraySlice('smithByAgeLastModified')(function (getSlice) {
-				var items = getSlice();
+			return cluster.requestArraySlice('smithByAgeLastModified')(function (result) {
+				var items = result.get();
 				a.deep(items, [
 					{ id: obj1.__id__, sortIndex: items[0].sortIndex },
 					{ id: obj3.__id__, sortIndex: items[1].sortIndex }
@@ -74,8 +74,8 @@ module.exports = function (T, a, d) {
 		})(function () {
 			cluster.initializeSet('age>20', db.Object.instances.filterByKeyPath('age',
 				function (val) { return val > 20; }));
-			return cluster.requestSetSize('age>20')(function (getResult) {
-				var data = getResult();
+			return cluster.requestSetSize('age>20')(function (result) {
+				var data = result.get();
 				a.deep(data, { value: 2, stamp: data.stamp });
 			});
 		})(function () {
