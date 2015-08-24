@@ -145,16 +145,16 @@ ee(Object.defineProperties(DbjsCluster.prototype, assign({
 	_observableArrays: d(function () { return create(null); })
 }), memoizeMethods({
 	requestArraySlice: d(function (arrayName, start, end) {
-		var array = this._observableArrays[arrayName], slice, onChange;
+		var array = this._observableArrays[arrayName], slice, emit;
 		if (!array) throw new Error("Array for " + stringify(arrayName) + " was not initialized yet");
 		slice = array.slice(start, end);
-		slice.on('change', onChange = function () {
+		slice.on('change', emit = function () {
 			this.emit('arrayslice', { id: arrayName, start: start, end: end,
 				value: getSliceSnapshot(slice, array) });
 		}.bind(this));
 		return deferred({
 			get: function () { return getSliceSnapshot(slice, array); },
-			emit: onChange
+			emit: emit
 		});
 	}, { resolvers: [ensureString, toNatural, function (value) {
 		return toNatural(value) || Infinity;
