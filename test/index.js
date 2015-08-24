@@ -47,7 +47,7 @@ module.exports = function (T, a, d) {
 			return cluster.persistentDb.loadAll();
 		})(function () {
 			cluster.initializeSet('smith', db.Object.instances.filterByKeyPath('lastName', 'Smith'));
-			cluster.initializeArray('smith', 'smithByAge', 'age');
+			cluster.initializeArray('smithByAge', 'smith', 'age');
 			return cluster.requestArraySlice('smithByAge')(function (getSlice) {
 				a.deep(getSlice(), [
 					{ id: obj3.__id__, sortIndex: 10 },
@@ -55,7 +55,7 @@ module.exports = function (T, a, d) {
 				]);
 			});
 		})(function () {
-			cluster.initializeArray('smith', 'smithByAgeLastModified', 'age:lastModified');
+			cluster.initializeArray('smithByAgeLastModified', 'smith', 'age:lastModified');
 			return cluster.requestArraySlice('smithByAgeLastModified')(function (getSlice) {
 				var items = getSlice();
 				a.deep(items, [

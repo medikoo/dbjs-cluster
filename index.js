@@ -115,7 +115,7 @@ ee(Object.defineProperties(DbjsCluster.prototype, assign({
 		}
 		return (this._observableSets[name] = ensureObservableSet(set));
 	}),
-	initializeArray: d(function (setName, arrayName, sortKeyPath) {
+	initializeArray: d(function (arrayName, setName, sortKeyPath) {
 		var compare, keyTokens, resolve, array;
 		if (!this._observableSets[setName]) {
 			throw new Error("Array for " + stringify(setName) + " was not initialized yet");
