@@ -19,7 +19,8 @@
     "levelup": "^1.2.1",
     "memoizee": "^0.3.9",
     "observable-set": "0.0.2",
-    "time-uuid": "1"
+    "time-uuid": "1",
+    "timers-ext": "0.1"
   },
   "devDependencies": {
     "dbjs-level": "git://github.com/medikoo/dbjs-level.git#74138baf161284054164ca",
