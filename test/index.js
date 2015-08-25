@@ -8,7 +8,7 @@ var resolve   = require('path').resolve
   , dbPath = resolve(__dirname, 'test-db')
   , mapEvents = function (event) { return event.object.__valueId__; };
 
-require('levelup');
+require('leveldown');
 
 module.exports = function (T, a, d) {
 	var db = new Database()
