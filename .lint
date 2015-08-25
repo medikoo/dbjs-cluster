@@ -16,4 +16,7 @@ stupid
 vars
 
 ./test
-predef+ __dirname
+predef+ __dirname, setTimeout, process
+
+./process.js
+predef+ process
