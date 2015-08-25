@@ -18,7 +18,7 @@
     "event-emitter": "^0.3.3",
     "levelup": "^1.2.1",
     "memoizee": "^0.3.9",
-    "observable-set": "0.0.2",
+    "observable-set": "git://github.com/medikoo/observable-set.git#ab3a27400a5412f653a311",
     "time-uuid": "1",
     "timers-ext": "0.1"
   },
