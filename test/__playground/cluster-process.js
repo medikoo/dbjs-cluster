@@ -9,7 +9,7 @@ var resolve        = require('path').resolve
 
   , dbPath = resolve(__dirname, 'test-db-process');
 
-require('levelup');
+require('leveldown');
 
 var db = new Database()
   , persistentDb = dbjsLevel(db, { path: dbPath }), cluster;
